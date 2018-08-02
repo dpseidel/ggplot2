@@ -18,6 +18,23 @@ test_that("dup_axis() works", {
   expect_equal(breaks$major_source, breaks$sec.major_source)
 })
 
+test_that("sec_axis() works for power transformations (monotonicity test doesn't fail)",{
+  p <- ggplot(foo, aes(x, y)) +
+    geom_point() +
+    scale_x_sqrt(sec.axis = sec_axis(~. * 100))
+  scale <- layer_scales(p)$x
+  breaks <- scale$break_info()
+  expect_equal(breaks$major, breaks$sec.major, tolerance = .001)
+
+  p <- ggplot(foo, aes(x, y)) +
+    geom_point() +
+    scale_x_continuous(trans = scales::boxcox_trans(.25),
+                       sec.axis = sec_axis(~. * 100))
+  scale <- layer_scales(p)$x
+  breaks <- scale$break_info()
+  expect_equal(breaks$major, breaks$sec.major, tolerance = .001)
+})
+
 test_that("custom breaks work", {
   custom_breaks <- c(0.01, 0.1, 1, 10, 100)
   p <- ggplot(foo, aes(x, y)) +

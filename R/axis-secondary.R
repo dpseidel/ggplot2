@@ -109,20 +109,22 @@ AxisSecondary <- ggproto("AxisSecondary", NULL,
     f_eval(self$trans, range)
   },
 
-
   break_info = function(self, range, scale) {
     if (self$empty()) return()
 
-    # Get original range before transformation
-    along_range <- seq(range[1], range[2], length.out = self$detail)
-    old_range <- scale$trans$inverse(along_range)
+    # Get original range before primary transformation
+    inv_range <- scale$trans$inverse(range)
+    inv_seq <- seq(inv_range[1], inv_range[2], length.out = self$detail)
+    trans_seq <- self$transform_range(inv_seq)
+
+     # Test for monotonicity of secondary transformation
+    if (length(unique(sign(diff(trans_seq)))) != 1)
+      stop("transformation for secondary axes must be monotonic")
 
     # Create mapping between primary and secondary range
+    along_range <- seq(range[1], range[2], length.out = self$detail)
+    old_range <- scale$trans$inverse(along_range)
     full_range <- self$transform_range(old_range)
-
-    # Test for monotonicity
-    if (length(unique(sign(diff(full_range)))) != 1)
-      stop("transformation for secondary axes must be monotonic")
 
     # Get break info for the secondary axis
     new_range <- range(full_range, na.rm = TRUE)
