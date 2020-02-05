@@ -87,16 +87,29 @@ NULL
 #' @format NULL
 GeomSf <- ggproto("GeomSf", Geom,
   required_aes = "geometry",
-  default_aes = aes(
-    shape = NULL,
-    colour = NULL,
-    fill = NULL,
-    size = NULL,
-    linetype = 1,
-    alpha = NA,
-    stroke = 0.5
-  ),
+  default_aes = list(
+    "point" = GeomPoint$default_aes,
+    "line" = GeomLine$default_aes,
+    "other" = aes(
+      colour = from_theme("colour"),
+      fill = from_theme("fill"),
+      size = 0.5,
+      linetype = 1,
+      alpha = NA
+    ),
+    "collection" = aes(
+      colour = from_theme("colour"),
+      fill = from_theme("fill"),
+      size = 0.5,
+      linetype = 1,
+      alpha = NA,
+      subgroup = NULL,
+      shape = 19,
+      point_size = 1.5,
+      point_fill = NA,
+      stroke = .5)),
 
+  ## could we evaluated default aesthetics the normal way and then just trim them from coord transform?
   draw_panel = function(data, panel_params, coord, legend = NULL,
                         lineend = "butt", linejoin = "round", linemitre = 10,
                         na.rm = TRUE) {
@@ -131,6 +144,56 @@ default_aesthetics <- function(type) {
   }
 }
 
+set_sf_defaults <- function(data, defaults){
+  type <- sf_types[sf::st_geometry_type(data$geometry)]
+  is_point <- type == "point"
+  is_line <- type == "line"
+  is_other <- type == "other"
+  is_collection <- type == "collection"
+  type_ind <- match(type, c("point", "line", "other", "collection"))
+  remove <- rep_len(FALSE, nrow(data))
+  remove[is_point] <- detect_missing(data, c(GeomPoint$required_aes, GeomPoint$non_missing_aes))[is_point]
+  remove[is_line] <- detect_missing(data, c(GeomPath$required_aes, GeomPath$non_missing_aes))[is_line]
+  remove[is_other] <- detect_missing(data, c(GeomPolygon$required_aes, GeomPolygon$non_missing_aes))[is_other]
+  if (any(remove)) {
+    if (!na.rm) {
+      warning_wrap(
+        "Removed ", sum(remove), " rows containing missing values (geom_sf)."
+      )
+    }
+    data <- data[!remove, , drop = FALSE]
+    type_ind <- type_ind[!remove]
+    is_collection <- is_collection[!remove]
+  }
+  # defaults <- list(
+  #   GeomPoint$default_aes,
+  #   GeomLine$default_aes,
+  #   modify_list(GeomPolygon$default_aes, list(fill = "grey90", colour = "grey35"))
+  # )
+  # defaults[[4]] <- modify_list(
+  #   defaults[[3]],
+  #   rename(GeomPoint$default_aes, c(size = "point_size", fill = "point_fill"))
+  # )
+  default_names <- unique(unlist(lapply(defaults, names)))
+  defaults <- lapply(setNames(default_names, default_names), function(n) {
+    unlist(lapply(defaults, function(def) def[[n]] %||% NA))
+  })
+  data$alpha <- data$alpha %||% defaults$alpha[type_ind]
+  data$colour <- data$colour %||% defaults$colour[type_ind]
+  #col[is_point | is_line] <- alpha(col[is_point | is_line], alpha[is_point | is_line])
+  data$fill <- data$fill %||% defaults$fill[type_ind]
+  #fill <- alpha(fill, alpha)
+  data$size <- data$size %||% defaults$size[type_ind]
+  #point_size <- ifelse(is_collection, data$size %||% defaults$point_size[type_ind], size)
+  data$stroke <- (data$stroke %||% defaults$stroke[1]) * .stroke / 2
+  #fontsize <- point_size * .pt + stroke
+  #lwd <- ifelse(is_point, stroke, size * .pt)
+  data$shape <- data$shape %||% defaults$shape[type_ind]
+  data$linetype <- data$linetype %||% defaults$linetype[type_ind]
+
+  return(data)
+}
+
 sf_grob <- function(x, lineend = "butt", linejoin = "round", linemitre = 10, na.rm = TRUE) {
   type <- sf_types[sf::st_geometry_type(x$geometry)]
   is_point <- type == "point"
@@ -138,40 +201,26 @@ sf_grob <- function(x, lineend = "butt", linejoin = "round", linemitre = 10, na.
   is_other <- type == "other"
   is_collection <- type == "collection"
   type_ind <- match(type, c("point", "line", "other", "collection"))
-  remove <- rep_len(FALSE, nrow(x))
-  remove[is_point] <- detect_missing(x, c(GeomPoint$required_aes, GeomPoint$non_missing_aes))[is_point]
-  remove[is_line] <- detect_missing(x, c(GeomPath$required_aes, GeomPath$non_missing_aes))[is_line]
-  remove[is_other] <- detect_missing(x, c(GeomPolygon$required_aes, GeomPolygon$non_missing_aes))[is_other]
-  if (any(remove)) {
-    if (!na.rm) {
-      warning_wrap(
-        "Removed ", sum(remove), " rows containing missing values (geom_sf)."
-      )
-    }
-    x <- x[!remove, , drop = FALSE]
-    type_ind <- type_ind[!remove]
-    is_collection <- is_collection[!remove]
-  }
-  defaults <- list(
-    GeomPoint$default_aes,
-    GeomLine$default_aes,
-    modify_list(GeomPolygon$default_aes, list(fill = "grey90", colour = "grey35"))
-  )
-  defaults[[4]] <- modify_list(
-    defaults[[3]],
-    rename(GeomPoint$default_aes, c(size = "point_size", fill = "point_fill"))
-  )
-  default_names <- unique(unlist(lapply(defaults, names)))
-  defaults <- lapply(setNames(default_names, default_names), function(n) {
-    unlist(lapply(defaults, function(def) def[[n]] %||% NA))
-  })
-  alpha <- x$alpha %||% defaults$alpha[type_ind]
-  col <- x$colour %||% defaults$colour[type_ind]
+  # remove <- rep_len(FALSE, nrow(data))
+  # remove[is_point] <- detect_missing(data, c(GeomPoint$required_aes, GeomPoint$non_missing_aes))[is_point]
+  # remove[is_line] <- detect_missing(data, c(GeomPath$required_aes, GeomPath$non_missing_aes))[is_line]
+  # remove[is_other] <- detect_missing(data, c(GeomPolygon$required_aes, GeomPolygon$non_missing_aes))[is_other]
+  # if (any(remove)) {
+  #   if (!na.rm) {
+  #     warning_wrap(
+  #       "Removed ", sum(remove), " rows containing missing values (geom_sf)."
+  #     )
+  #   }
+  #   x <- x[!remove, , drop = FALSE]
+  #   type_ind <- type_ind[!remove]
+  #   is_collection <- is_collection[!remove]
+  alpha <- x$alpha
+  col <- x$colour
   col[is_point | is_line] <- alpha(col[is_point | is_line], alpha[is_point | is_line])
-  fill <- x$fill %||% defaults$fill[type_ind]
+  fill <- x$fill
   fill <- alpha(fill, alpha)
   size <- x$size %||% defaults$size[type_ind]
-  point_size <- ifelse(is_collection, x$size %||% defaults$point_size[type_ind], size)
+  point_size <- ifelse(is_collection, data$size %||% defaults$point_size[type_ind], size)
   stroke <- (x$stroke %||% defaults$stroke[1]) * .stroke / 2
   fontsize <- point_size * .pt + stroke
   lwd <- ifelse(is_point, stroke, size * .pt)

@@ -113,8 +113,18 @@ Geom <- ggproto("Geom",
 
     if (length(theme) == 0) theme <- theme_get()
 
+    # this should be documented with a dummy function elsewhere
     from_theme <- function(aes, element = "geom") {
       theme[[element]][[aes]]
+    }
+
+    ### we need to add special handling for sf here.
+    if("GeomSf" %in% class(self)){
+      return(
+        lapply(self$default_aes, function(x){
+          lapply(x, rlang::eval_tidy, data = list(from_theme = from_theme))
+          })
+      )
     }
 
     lapply(self$default_aes, rlang::eval_tidy, data = list(from_theme = from_theme))
@@ -122,6 +132,11 @@ Geom <- ggproto("Geom",
 
   # Combine data with defaults and set aesthetics from parameters
   use_defaults = function(self, data, defaults, params = list(), modifiers = aes()) {
+
+    if("GeomSf" %in% class(self)){
+      data <- set_sf_defaults(data, defaults)
+    } else{
+
     # Fill in missing aesthetics with their defaults
     missing_aes <- setdiff(names(defaults), names(data))
     missing_eval <- lapply(defaults[missing_aes], eval_tidy)
@@ -133,6 +148,8 @@ Geom <- ggproto("Geom",
       data <- as_gg_data_frame(missing_eval)
     } else {
       data[names(missing_eval)] <- missing_eval
+    }
+
     }
 
     # If any after_scale mappings are detected they will be resolved here
