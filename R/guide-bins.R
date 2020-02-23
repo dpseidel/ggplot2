@@ -168,11 +168,12 @@ guide_geom.bins <- function(guide, layers, default_mapping, theme) {
       return(NULL)
     }
 
+    defaults <- layer$geom$eval_defaults(theme = theme)
+
     if (length(matched) > 0) {
       # Filter out set aesthetics that can't be applied to the legend
       n <- vapply(layer$aes_params, length, integer(1))
       params <- layer$aes_params[n == 1]
-      defaults <- layer$geom$eval_defaults(theme = theme)
 
       data <- layer$geom$use_defaults(guide$key[matched], defaults = defaults,  params)
     } else {

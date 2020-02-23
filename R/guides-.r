@@ -359,7 +359,11 @@ guide_gengrob <- function(guide, theme) UseMethod("guide_gengrob")
 
 matched_aes <- function(layer, guide, defaults) {
   all <- names(c(layer$mapping, if (layer$inherit.aes) defaults, layer$stat$default_aes))
-  geom <- c(layer$geom$required_aes, names(layer$geom$default_aes))
+  default_names <- names(layer$geom$default_aes)
+  if (inherits(layer, "LayerSf")) {
+    default_names <- names(default_aesthetics(layer$geom_params$legend))
+  }
+  geom <- c(layer$geom$required_aes, default_names)
   matched <- intersect(intersect(all, geom), names(guide$key))
   matched <- setdiff(matched, names(layer$geom_params))
   setdiff(matched, names(layer$aes_params))

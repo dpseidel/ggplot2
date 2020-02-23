@@ -253,6 +253,18 @@ guide_geom.legend <- function(guide, layers, default_mapping, theme) {
       return(NULL)
     }
 
+    defaults <- layer$geom$eval_defaults(theme = theme)
+
+    if(inherits(layer, "LayerSf")){
+      if (layer$geom_params$legend == "point") {
+          defaults <-   defaults[["point"]]
+        } else if (layer$geom_params$legend == "line") {
+          defaults <-   defaults[["line"]]
+        } else  {
+          defaults <-  defaults[["other"]]
+        }
+    }
+
     if (length(matched) > 0) {
       # Filter out set aesthetics that can't be applied to the legend
       n <- vapply(layer$aes_params, length, integer(1))
@@ -260,7 +272,6 @@ guide_geom.legend <- function(guide, layers, default_mapping, theme) {
 
       aesthetics <- layer$mapping
       modifiers <- aesthetics[is_scaled_aes(aesthetics) | is_staged_aes(aesthetics)]
-      defaults <- layer$geom$eval_defaults(theme = theme)
 
       data <- layer$geom$use_defaults(guide$key[matched], defaults = defaults, params, modifiers)
     } else {

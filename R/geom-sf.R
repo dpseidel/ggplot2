@@ -109,7 +109,6 @@ GeomSf <- ggproto("GeomSf", Geom,
       point_fill = NA,
       stroke = .5)),
 
-  ## could we evaluated default aesthetics the normal way and then just trim them from coord transform?
   draw_panel = function(data, panel_params, coord, legend = NULL,
                         lineend = "butt", linejoin = "round", linemitre = 10,
                         na.rm = TRUE) {
@@ -122,8 +121,10 @@ GeomSf <- ggproto("GeomSf", Geom,
     sf_grob(coord, lineend = lineend, linejoin = linejoin, linemitre = linemitre, na.rm = na.rm)
   },
 
-  draw_key = function(data, params, size) {
-    data <- modify_list(default_aesthetics(params$legend), data)
+  draw_key = function(data, params, size, theme) {
+    defaults <- rlang::eval_tidy(default_aesthetics(params$legend))
+    data <- modify_list(defaults, data)
+
     if (params$legend == "point") {
       draw_key_point(data, params, size)
     } else if (params$legend == "line") {
@@ -136,58 +137,59 @@ GeomSf <- ggproto("GeomSf", Geom,
 
 default_aesthetics <- function(type) {
   if (type == "point") {
-    GeomPoint$default_aes
+    GeomSf$default_aes[["point"]]
   } else if (type == "line") {
-    GeomLine$default_aes
+    GeomSf$default_aes[["line"]]
   } else  {
-    modify_list(GeomPolygon$default_aes, list(fill = "grey90", colour = "grey35"))
+    GeomSf$default_aes[["other"]]
   }
 }
 
-set_sf_defaults <- function(data, defaults){
-  type <- sf_types[sf::st_geometry_type(data$geometry)]
+sf_remove_missing <- function(data, defaults, type) {
+    #type <- sf_types[sf::st_geometry_type(data$geometry)] ## this doesn't work for layer which has no geometry column
+    is_point <- type == "point"
+    is_line <- type == "line"
+    is_other <- type == "other"
+    is_collection <- type == "collection"
+    type_ind <- match(type, c("point", "line", "other", "collection"))
+    remove <- rep_len(FALSE, nrow(data))
+    remove[is_point] <- detect_missing(data, c(GeomPoint$required_aes, GeomPoint$non_missing_aes))[is_point]
+    remove[is_line] <- detect_missing(data, c(GeomPath$required_aes, GeomPath$non_missing_aes))[is_line]
+    remove[is_other] <- detect_missing(data, c(GeomPolygon$required_aes, GeomPolygon$non_missing_aes))[is_other]
+    if (any(remove)) {
+      if (!na.rm) {
+        warning_wrap(
+          "Removed ", sum(remove), " rows containing missing values (geom_sf)."
+        )
+      }
+  data <- data[!remove, , drop = FALSE]
+  type_ind <- type_ind[!remove]
+  is_collection <- is_collection[!remove]
+}
+return(data)
+}
+
+### maybe we can make all this work happen more consistently with the use_defaults
+### framework?
+set_sf_defaults <- function(data, defaults, type) {
+  #browser()
+  #type <- sf_types[sf::st_geometry_type(data$geometry)] ## this doesn't work for layer which has no geometry column
   is_point <- type == "point"
   is_line <- type == "line"
   is_other <- type == "other"
   is_collection <- type == "collection"
   type_ind <- match(type, c("point", "line", "other", "collection"))
-  remove <- rep_len(FALSE, nrow(data))
-  remove[is_point] <- detect_missing(data, c(GeomPoint$required_aes, GeomPoint$non_missing_aes))[is_point]
-  remove[is_line] <- detect_missing(data, c(GeomPath$required_aes, GeomPath$non_missing_aes))[is_line]
-  remove[is_other] <- detect_missing(data, c(GeomPolygon$required_aes, GeomPolygon$non_missing_aes))[is_other]
-  if (any(remove)) {
-    if (!na.rm) {
-      warning_wrap(
-        "Removed ", sum(remove), " rows containing missing values (geom_sf)."
-      )
-    }
-    data <- data[!remove, , drop = FALSE]
-    type_ind <- type_ind[!remove]
-    is_collection <- is_collection[!remove]
-  }
-  # defaults <- list(
-  #   GeomPoint$default_aes,
-  #   GeomLine$default_aes,
-  #   modify_list(GeomPolygon$default_aes, list(fill = "grey90", colour = "grey35"))
-  # )
-  # defaults[[4]] <- modify_list(
-  #   defaults[[3]],
-  #   rename(GeomPoint$default_aes, c(size = "point_size", fill = "point_fill"))
-  # )
+
   default_names <- unique(unlist(lapply(defaults, names)))
   defaults <- lapply(setNames(default_names, default_names), function(n) {
     unlist(lapply(defaults, function(def) def[[n]] %||% NA))
   })
   data$alpha <- data$alpha %||% defaults$alpha[type_ind]
   data$colour <- data$colour %||% defaults$colour[type_ind]
-  #col[is_point | is_line] <- alpha(col[is_point | is_line], alpha[is_point | is_line])
   data$fill <- data$fill %||% defaults$fill[type_ind]
-  #fill <- alpha(fill, alpha)
   data$size <- data$size %||% defaults$size[type_ind]
-  #point_size <- ifelse(is_collection, data$size %||% defaults$point_size[type_ind], size)
-  data$stroke <- (data$stroke %||% defaults$stroke[1]) * .stroke / 2
-  #fontsize <- point_size * .pt + stroke
-  #lwd <- ifelse(is_point, stroke, size * .pt)
+  # this breaks for legends because data$stroke does not exist.
+  data$stroke <- (data$stroke %||% defaults$stroke[type_ind]) * .stroke / 2
   data$shape <- data$shape %||% defaults$shape[type_ind]
   data$linetype <- data$linetype %||% defaults$linetype[type_ind]
 
@@ -201,19 +203,6 @@ sf_grob <- function(x, lineend = "butt", linejoin = "round", linemitre = 10, na.
   is_other <- type == "other"
   is_collection <- type == "collection"
   type_ind <- match(type, c("point", "line", "other", "collection"))
-  # remove <- rep_len(FALSE, nrow(data))
-  # remove[is_point] <- detect_missing(data, c(GeomPoint$required_aes, GeomPoint$non_missing_aes))[is_point]
-  # remove[is_line] <- detect_missing(data, c(GeomPath$required_aes, GeomPath$non_missing_aes))[is_line]
-  # remove[is_other] <- detect_missing(data, c(GeomPolygon$required_aes, GeomPolygon$non_missing_aes))[is_other]
-  # if (any(remove)) {
-  #   if (!na.rm) {
-  #     warning_wrap(
-  #       "Removed ", sum(remove), " rows containing missing values (geom_sf)."
-  #     )
-  #   }
-  #   x <- x[!remove, , drop = FALSE]
-  #   type_ind <- type_ind[!remove]
-  #   is_collection <- is_collection[!remove]
   alpha <- x$alpha
   col <- x$colour
   col[is_point | is_line] <- alpha(col[is_point | is_line], alpha[is_point | is_line])

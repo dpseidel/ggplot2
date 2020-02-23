@@ -119,6 +119,9 @@ Geom <- ggproto("Geom",
     }
 
     ### we need to add special handling for sf here.
+
+    ### what if we evaluate all defaults, leaving them in the structure
+    ### sf_defaults expects???
     if("GeomSf" %in% class(self)){
       return(
         lapply(self$default_aes, function(x){
@@ -133,8 +136,10 @@ Geom <- ggproto("Geom",
   # Combine data with defaults and set aesthetics from parameters
   use_defaults = function(self, data, defaults, params = list(), modifiers = aes()) {
 
-    if("GeomSf" %in% class(self)){
-      data <- set_sf_defaults(data, defaults)
+    if("GeomSf" %in% class(self)){ # this also pulls layer/legend
+      # pass all the defaults?
+      data <- sf_remove_missing(data, defaults, type = sf_types[["MULTIPOLYGON"]])  #sf_types[st_geometry_type(data$geometry)])
+      data <- set_sf_defaults(data, defaults, type = sf_types[["MULTIPOLYGON"]])  #sf_types[st_geometry_type(data$geometry)])  ## how to pass type as well.
     } else{
 
     # Fill in missing aesthetics with their defaults
