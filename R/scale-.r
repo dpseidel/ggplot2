@@ -377,7 +377,7 @@ Scale <- ggproto("Scale", NULL,
     abort("Not implemented")
   },
 
-  range = ggproto(NULL, Range),
+  range = Range,
   limits = NULL,
   na.value = NA,
   expand = waiver(),
